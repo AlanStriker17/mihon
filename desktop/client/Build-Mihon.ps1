@@ -13,7 +13,11 @@ if (-not $java) {
     throw "JDK 21 is required. Install a JDK 21 distribution and ensure java is on PATH."
 }
 
-$javaVersion = (& java -version 2>&1 | Out-String)
+$javaVersion = (& $env:ComSpec /d /c "java -version 2>&1" | Out-String)
+$javaVersionExitCode = $LASTEXITCODE
+if ($javaVersionExitCode -ne 0) {
+    throw "Unable to run Java to check its version. Verify that JDK 21 is on PATH."
+}
 if ($javaVersion -notmatch 'version "21(\.|")') {
     throw "This build requires Java 21. Detected: $($javaVersion.Trim())"
 }
