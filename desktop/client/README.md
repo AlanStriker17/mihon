@@ -42,7 +42,9 @@ Windows. The manual GitHub Actions workflow at
 `.github/workflows/build-desktop-windows.yml` builds the installer on a Windows
 runner; select portable, EXE, or MSI when starting it. It uploads the selected
 package artifact for 14 days. Pushing to the `add-windows-desktop-build` branch
-automatically builds a portable ZIP; the workflow run appears in GitHub Actions.
+automatically builds both the portable ZIP and EXE installer; the workflow run
+appears in GitHub Actions. The MSI remains available through manual workflow
+dispatch.
 Source plugins
 implement `SourcePluginProvider`, compile against `desktop:source-api`, and
 must either be present on the application's runtime classpath or be installed as

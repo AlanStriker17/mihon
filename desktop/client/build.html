@@ -40,10 +40,10 @@
       <p id="package-description">Downloads a ZIP containing Mihon.exe and its bundled runtime. Extract it and run Mihon.exe; no installer or WiX is needed.</p>
       <h3>Build it in GitHub Actions</h3>
       <ol>
-        <li>Open the Windows build workflow; pushes to the build branch start a portable build automatically.</li>
-        <li>Choose <strong id="workflow-choice">portable</strong> in the package format menu.</li>
+        <li>Open the Windows build workflow; pushes to the build branch automatically build both portable ZIP and EXE packages.</li>
+        <li>For a manual run, choose <strong id="workflow-choice">portable</strong> in the package format menu.</li>
         <li>Wait for the run to finish successfully.</li>
-        <li>Open the run and download the <strong id="artifact-name">mihon-desktop-windows-portable</strong> artifact.</li>
+        <li>Open the run and download the <strong id="artifact-name">mihon-desktop-windows-portable-exe</strong> artifact.</li>
       </ol>
       <p>You need to be signed in to GitHub to download the workflow artifact. Manual format selection requires the workflow to be enabled on the repository's default branch.</p>
       <div class="actions">

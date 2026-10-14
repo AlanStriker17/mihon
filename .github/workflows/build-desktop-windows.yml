@@ -35,17 +35,17 @@ jobs:
           java-version: '21'
 
       - name: Install WiX Toolset
-        if: env.PACKAGE_TYPE != 'portable'
+        if: ${{ env.PACKAGE_TYPE != 'portable' || github.event_name == 'push' }}
         shell: pwsh
         run: choco install wixtoolset --no-progress --yes
 
       - name: Build portable Windows ZIP
-        if: env.PACKAGE_TYPE == 'portable'
+        if: ${{ env.PACKAGE_TYPE == 'portable' || github.event_name == 'push' }}
         shell: pwsh
         run: .\gradlew.bat :desktop:client:packageWindowsPortableZip --no-daemon --max-workers=2
 
       - name: Build EXE installer
-        if: env.PACKAGE_TYPE == 'exe'
+        if: ${{ env.PACKAGE_TYPE == 'exe' || github.event_name == 'push' }}
         shell: pwsh
         run: .\gradlew.bat :desktop:client:packageWindowsExe --no-daemon --max-workers=2
 
@@ -57,7 +57,7 @@ jobs:
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: mihon-desktop-windows-${{ env.PACKAGE_TYPE }}
+          name: mihon-desktop-windows-${{ github.event_name == 'push' && 'portable-exe' || env.PACKAGE_TYPE }}
           path: |
             desktop/client/build/windows-package/portable/*.zip
             desktop/client/build/windows-package/exe/*.exe
