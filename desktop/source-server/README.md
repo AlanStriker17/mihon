@@ -12,7 +12,9 @@ Build and run with:
 desktop/source-server/build/install/source-server/bin/source-server
 ```
 
-`MIHON_SOURCE_SERVER_PORT` can select a listening port from 1 to 65535. Source
-providers are discovered using Java `ServiceLoader` and must be on the server
-runtime classpath. Android APK extensions are not supported by this runtime;
-desktop plugins must be rebuilt against `desktop:source-api`.
+`MIHON_SOURCE_SERVER_PORT` can select a listening port from 1 to 65535. MangaDex
+is built in. Additional source providers are discovered using Java `ServiceLoader`
+from the server runtime classpath and from JARs in `~/.mihon/plugins`. Android APK
+extensions are not supported by this runtime; desktop plugins must be rebuilt
+against `desktop:source-api`. Plugin JARs execute code on the user's computer and
+must only be installed from trusted publishers.

@@ -9,6 +9,9 @@ the app.
 The JVM desktop client currently includes:
 
 - Browse/search against installed desktop `SourcePlugin` implementations.
+- MangaDex search, chapter lists, and reader pages through its public API.
+- Install and remove trusted desktop plugin JARs from the Extensions tab. Plugins are
+  loaded at application startup, so restart Mihon after changing installed plugins.
 - View manga chapters and page lists returned by those plugins.
 - A basic page reader with previous/next navigation and bounded image decode.
 - A persistent local library at `~/.mihon/library.json`.
@@ -42,10 +45,15 @@ package artifact for 14 days. Pushing to the `add-windows-desktop-build` branch
 automatically builds a portable ZIP; the workflow run appears in GitHub Actions.
 Source plugins
 implement `SourcePluginProvider`, compile against `desktop:source-api`, and
-must be present on the application's runtime classpath. Existing Mihon Android
-APK extensions are not loadable on desktop without rebuilding their source
+must either be present on the application's runtime classpath or be installed as
+a JAR in `~/.mihon/plugins`. A plugin JAR must include
+`META-INF/services/mihon.desktop.source.SourcePluginProvider` and its required
+runtime dependencies. Plugins are executable code with access to the user's
+computer; install only JARs from publishers you trust. Existing Mihon Android APK
+extensions are not loadable on desktop without rebuilding their source
 implementations.
 
 This is an incremental desktop client, not full Mihon feature parity. Sync,
-tracking providers, Android backup formats, extension installation UI, and a
-production-grade paged image viewer are not yet implemented.
+tracking providers, Android backup formats, automatic extension discovery from
+Android repositories, and a production-grade paged image viewer are not yet
+implemented.

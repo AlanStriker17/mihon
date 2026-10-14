@@ -12,6 +12,7 @@ import mihon.desktop.source.SourceHttpRequest
 import mihon.desktop.source.SourceHttpResponse
 import mihon.desktop.source.SourceManga
 import mihon.desktop.source.SourceChapter
+import mihon.desktop.source.SourcePlugin
 import mihon.desktop.source.SourcePluginProvider
 import java.net.InetSocketAddress
 import java.net.URI
@@ -21,9 +22,13 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.Executors
 import java.util.ServiceLoader
+import java.util.ServiceConfigurationError
 import java.util.concurrent.CountDownLatch
+import java.net.URLClassLoader
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -35,9 +40,7 @@ private val json = Json {
 
 fun startSourceServer(port: Int = configuredPort()): HttpServer {
     val client = JdkSourceHttpClient()
-    val plugins = ServiceLoader.load(SourcePluginProvider::class.java)
-        .map { it.create(client) }
-        .sortedBy { it.descriptor.name.lowercase() }
+    val plugins = loadPlugins(client)
     val descriptors = plugins.map { it.descriptor }
 
     val server = HttpServer.create(InetSocketAddress("127.0.0.1", port), 0)
@@ -105,6 +108,72 @@ fun startSourceServer(port: Int = configuredPort()): HttpServer {
     server.start()
     println("Mihon source server listening on http://127.0.0.1:$port")
     return server
+}
+
+private fun loadPlugins(client: SourceHttpClient): List<SourcePlugin> {
+    val loaded = buildList {
+        add(MangaDexSourcePluginProvider().create(client))
+        ServiceLoader.load(SourcePluginProvider::class.java).forEach { provider ->
+            try {
+                add(provider.create(client))
+            } catch (error: Exception) {
+                System.err.println("Unable to create bundled source plugin ${provider.javaClass.name}: ${error.message}")
+            }
+        }
+
+        val pluginDirectory = Path.of(System.getProperty("user.home"), ".mihon", "plugins")
+        Files.createDirectories(pluginDirectory)
+        Files.list(pluginDirectory).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.fileName.toString().endsWith(".jar", ignoreCase = true) }
+                .sorted()
+                .forEach { path ->
+                    val loader = URLClassLoader(
+                        arrayOf(path.toUri().toURL()),
+                        SourcePluginProvider::class.java.classLoader,
+                    )
+                    try {
+                        val providers = try {
+                            ServiceLoader.load(SourcePluginProvider::class.java, loader).toList()
+                        } catch (error: ServiceConfigurationError) {
+                            System.err.println("Unable to load source plugin ${path.fileName}: ${error.message}")
+                            emptyList()
+                        }
+                        providers.forEach { provider ->
+                            try {
+                                add(provider.create(client))
+                            } catch (error: Exception) {
+                                System.err.println(
+                                    "Unable to create source plugin ${provider.javaClass.name} from ${path.fileName}: ${error.message}",
+                                )
+                            }
+                        }
+                        if (providers.isEmpty()) {
+                            loader.close()
+                        } else {
+                            Runtime.getRuntime().addShutdownHook(Thread {
+                                try {
+                                    loader.close()
+                                } catch (error: Exception) {
+                                    System.err.println("Unable to close source plugin ${path.fileName}: ${error.message}")
+                                }
+                            })
+                        }
+                    } catch (error: Exception) {
+                        loader.close()
+                        System.err.println("Unable to load source plugin ${path.fileName}: ${error.message}")
+                    }
+                }
+        }
+    }
+    return loaded.groupBy { it.descriptor.id }
+        .onEach { (id, duplicates) ->
+            if (duplicates.size > 1) {
+                System.err.println("Duplicate source plugin id '$id'; only the first plugin will be used")
+            }
+        }
+        .values
+        .map { it.first() }
+        .sortedBy { it.descriptor.name.lowercase() }
 }
 
 fun main() {

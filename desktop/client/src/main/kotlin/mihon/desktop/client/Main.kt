@@ -41,6 +41,7 @@ import javax.swing.JPanel
 import javax.swing.JTabbedPane
 import javax.swing.JScrollPane
 import javax.swing.JTextField
+import javax.swing.JOptionPane
 import javax.swing.SwingUtilities
 import javax.swing.SwingWorker
 import javax.swing.border.EmptyBorder
@@ -77,6 +78,9 @@ private class MihonDesktopWindow(
     private val pageList = JList(pageModel)
     private val libraryModel = DefaultListModel<LibraryEntry>()
     private val libraryList = JList(libraryModel)
+    private val pluginStore = DesktopPluginStore()
+    private val pluginModel = DefaultListModel<Path>()
+    private val pluginList = JList(pluginModel)
     private val status = JLabel("Connecting to the local source server…")
     private var selectedChapter: SourceChapter? = null
 
@@ -98,6 +102,7 @@ private class MihonDesktopWindow(
         libraryList.cellRenderer = renderer {
             (it as? LibraryEntry)?.let { entry -> "${entry.manga.title}  —  ${entry.manga.author.orEmpty()}" }.orEmpty()
         }
+        pluginList.cellRenderer = renderer { (it as? Path)?.fileName?.toString().orEmpty() }
 
         val toolbar = JPanel(BorderLayout(8, 0)).apply {
             border = EmptyBorder(12, 12, 12, 12)
@@ -146,12 +151,23 @@ private class MihonDesktopWindow(
                 add(JButton("Import backup").apply { addActionListener { importBackup() } })
             }, BorderLayout.NORTH)
         }
+        val extensionsPanel = JPanel(BorderLayout(8, 8)).apply {
+            border = EmptyBorder(12, 12, 12, 12)
+            add(JLabel("Desktop source plugins are trusted Java code. Only install JARs from sources you trust."), BorderLayout.NORTH)
+            add(JScrollPane(pluginList), BorderLayout.CENTER)
+            add(JPanel().apply {
+                add(JButton("Install plugin JAR").apply { addActionListener { installPlugin() } })
+                add(JButton("Remove selected").apply { addActionListener { removePlugin() } })
+                add(JButton("Refresh list").apply { addActionListener { loadPlugins() } })
+            }, BorderLayout.SOUTH)
+        }
         val tabs = JTabbedPane().apply {
             addTab("Browse", JPanel(BorderLayout()).apply {
                 add(toolbar, BorderLayout.NORTH)
                 add(content, BorderLayout.CENTER)
             })
             addTab("Library", libraryPanel)
+            addTab("Extensions", extensionsPanel)
         }
         layout = BorderLayout()
         add(tabs, BorderLayout.CENTER)
@@ -159,6 +175,7 @@ private class MihonDesktopWindow(
         isVisible = true
         loadSources()
         loadLibrary()
+        loadPlugins()
     }
 
     private fun labeledList(title: String, list: JList<*>) = JPanel(BorderLayout()).apply {
@@ -228,6 +245,60 @@ private class MihonDesktopWindow(
             libraryModel.clear()
             entries.forEach(libraryModel::addElement)
             status.text = "${entries.size} title(s) in local library"
+        }
+    }
+
+    private fun loadPlugins() {
+        task("Loading desktop plugins…", { pluginStore.installedPlugins() }) { plugins ->
+            pluginModel.clear()
+            plugins.forEach(pluginModel::addElement)
+            status.text = if (plugins.isEmpty()) {
+                "No third-party desktop plugins installed — MangaDex is built in"
+            } else {
+                "${plugins.size} desktop plugin JAR(s) installed; restart Mihon after changes"
+            }
+        }
+    }
+
+    private fun installPlugin() {
+        val accepted = JOptionPane.showConfirmDialog(
+            this,
+            "A plugin can run code on your computer and access files and network resources. " +
+                "Install only a JAR from a publisher you trust.",
+            "Trust desktop plugin?",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.WARNING_MESSAGE,
+        )
+        if (accepted != JOptionPane.OK_OPTION) return
+
+        val chooser = JFileChooser().apply {
+            dialogTitle = "Install a Mihon desktop source plugin"
+            fileFilter = javax.swing.filechooser.FileNameExtensionFilter("Desktop plugin JARs", "jar")
+        }
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return
+        val selected = chooser.selectedFile.toPath()
+        task("Installing ${selected.fileName}…", { pluginStore.install(selected) }) { installed ->
+            loadPlugins()
+            status.text = "${installed.fileName} installed. Restart Mihon to load it."
+        }
+    }
+
+    private fun removePlugin() {
+        val selected = pluginList.selectedValue ?: return
+        val accepted = JOptionPane.showConfirmDialog(
+            this,
+            "Remove ${selected.fileName}? Restart Mihon to unload it.",
+            "Remove desktop plugin",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.QUESTION_MESSAGE,
+        )
+        if (accepted != JOptionPane.OK_OPTION) return
+        task("Removing ${selected.fileName}…", {
+            pluginStore.remove(selected)
+            selected.fileName.toString()
+        }) { name ->
+            loadPlugins()
+            status.text = "$name removed. Restart Mihon to unload it."
         }
     }
 
