@@ -30,24 +30,33 @@
     <p>Get a Windows installer for the Mihon desktop client. The installer must be built on Windows; a browser or Linux machine cannot compile a Windows <code>.exe</code> by itself.</p>
 
     <section class="card">
-      <h2>Build it in GitHub Actions</h2>
+      <h2>Choose a Windows package</h2>
+      <label for="package-type">Package type:</label>
+      <select id="package-type">
+        <option value="portable">Portable ZIP — no WiX needed</option>
+        <option value="exe">EXE installer — requires WiX</option>
+        <option value="msi">MSI installer — requires WiX</option>
+      </select>
+      <p id="package-description">Downloads a ZIP containing Mihon.exe and its bundled runtime. Extract it and run Mihon.exe; no installer or WiX is needed.</p>
+      <h3>Build it in GitHub Actions</h3>
       <ol>
-        <li>Open the Windows build workflow and select <strong>Run workflow</strong>.</li>
+        <li>Open the Windows build workflow; pushes to the build branch start a portable build automatically.</li>
+        <li>Choose <strong id="workflow-choice">portable</strong> in the package format menu.</li>
         <li>Wait for the run to finish successfully.</li>
-        <li>Open the run and download the <strong>mihon-desktop-windows</strong> artifact. It contains the installer.</li>
+        <li>Open the run and download the <strong id="artifact-name">mihon-desktop-windows-portable</strong> artifact.</li>
       </ol>
-      <p>You need access to the repository and must be signed in to GitHub to start the workflow and download its artifact.</p>
+      <p>You need to be signed in to GitHub to download the workflow artifact. Manual format selection requires the workflow to be enabled on the repository's default branch.</p>
       <div class="actions">
-        <a class="button" href="https://github.com/AlanStriker17/mihon/actions/workflows/build-desktop-windows.yml">Build and download via GitHub</a>
+        <a class="button" href="https://github.com/AlanStriker17/mihon/actions/workflows/build-desktop-windows.yml">Choose format and build on GitHub</a>
         <a class="button secondary" href="https://github.com/AlanStriker17/mihon">Open repository</a>
       </div>
     </section>
 
     <section class="card">
       <h2>Build on your Windows PC</h2>
-      <p>Download the repository, install JDK 21, then run <code>Build-Mihon.ps1</code> from the checkout. The script builds the installer and opens its output folder.</p>
-      <p>Or run this in PowerShell from the repository root:</p>
-      <p><code>.\gradlew.bat :desktop:client:packageWindowsExe --no-daemon</code></p>
+      <p>With JDK 21 installed, run the PowerShell script from the repository root. It defaults to the portable ZIP, which does not require WiX:</p>
+      <p><code>.\desktop\client\Build-Mihon.ps1 -PackageType portable</code></p>
+      <p>Choose <code>exe</code> or <code>msi</code> instead only if WiX Toolset is installed and available on PATH.</p>
       <div class="actions">
         <a class="button secondary" href="https://github.com/AlanStriker17/mihon/blob/main/desktop/client/Build-Mihon.ps1">View the Windows build script</a>
       </div>
@@ -55,5 +64,18 @@
 
     <p class="notice">This creates the current incremental desktop client, not a feature-complete Windows port. Existing Android extension APKs are not compatible with the desktop client.</p>
   </main>
+  <script>
+    const packageType = document.querySelector("#package-type");
+    const descriptions = {
+      portable: "Downloads a ZIP containing Mihon.exe and its bundled runtime. Extract it and run Mihon.exe; no installer or WiX is needed.",
+      exe: "Creates a traditional EXE installer. WiX Toolset must be installed on the Windows build machine.",
+      msi: "Creates an MSI installer. WiX Toolset must be installed on the Windows build machine."
+    };
+    packageType.addEventListener("change", () => {
+      document.querySelector("#package-description").textContent = descriptions[packageType.value];
+      document.querySelector("#workflow-choice").textContent = packageType.value;
+      document.querySelector("#artifact-name").textContent = `mihon-desktop-windows-${packageType.value}`;
+    });
+  </script>
 </body>
 </html>

@@ -1,7 +1,20 @@
 name: Build Mihon Desktop for Windows
 
 on:
+  push:
+    branches:
+      - add-windows-desktop-build
   workflow_dispatch:
+    inputs:
+      package_type:
+        description: Windows package format
+        required: true
+        type: choice
+        default: portable
+        options:
+          - portable
+          - exe
+          - msi
 
 permissions:
   contents: read
@@ -9,6 +22,8 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      PACKAGE_TYPE: ${{ inputs.package_type || 'portable' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -20,17 +35,32 @@ jobs:
           java-version: '21'
 
       - name: Install WiX Toolset
+        if: env.PACKAGE_TYPE != 'portable'
         shell: pwsh
         run: choco install wixtoolset --no-progress --yes
 
-      - name: Build Windows installer
+      - name: Build portable Windows ZIP
+        if: env.PACKAGE_TYPE == 'portable'
+        shell: pwsh
+        run: .\gradlew.bat :desktop:client:packageWindowsPortableZip --no-daemon --max-workers=2
+
+      - name: Build EXE installer
+        if: env.PACKAGE_TYPE == 'exe'
         shell: pwsh
         run: .\gradlew.bat :desktop:client:packageWindowsExe --no-daemon --max-workers=2
 
-      - name: Upload installer
+      - name: Build MSI installer
+        if: env.PACKAGE_TYPE == 'msi'
+        shell: pwsh
+        run: .\gradlew.bat :desktop:client:packageWindowsMsi --no-daemon --max-workers=2
+
+      - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: mihon-desktop-windows
-          path: desktop/client/build/windows-package/*.exe
+          name: mihon-desktop-windows-${{ env.PACKAGE_TYPE }}
+          path: |
+            desktop/client/build/windows-package/portable/*.zip
+            desktop/client/build/windows-package/exe/*.exe
+            desktop/client/build/windows-package/msi/*.msi
           if-no-files-found: error
           retention-days: 14

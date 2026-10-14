@@ -26,18 +26,18 @@ application {
     applicationName = "Mihon"
 }
 
-tasks.register<Exec>("packageWindowsExe") {
+fun registerWindowsPackage(taskName: String, packageType: String) = tasks.register<Exec>(taskName) {
     group = "distribution"
-    description = "Package the desktop client as a Windows installer using jpackage."
+    description = "Package the desktop client as a Windows $packageType using jpackage."
     dependsOn(tasks.installDist)
     onlyIf { System.getProperty("os.name").startsWith("Windows", ignoreCase = true) }
 
-    val outputDir = layout.buildDirectory.dir("windows-package")
+    val outputDir = layout.buildDirectory.dir("windows-package/$packageType")
     outputs.dir(outputDir)
     commandLine(
         "jpackage",
         "--type",
-        "exe",
+        packageType,
         "--name",
         "Mihon",
         "--app-version",
@@ -51,4 +51,22 @@ tasks.register<Exec>("packageWindowsExe") {
         "--dest",
         outputDir.get().asFile.absolutePath,
     )
+}
+
+registerWindowsPackage("packageWindowsPortable", "app-image")
+registerWindowsPackage("packageWindowsExe", "exe")
+registerWindowsPackage("packageWindowsMsi", "msi")
+
+tasks.register<Zip>("packageWindowsPortableZip") {
+    group = "distribution"
+    description = "Create a portable Windows ZIP containing Mihon.exe and its bundled runtime."
+    dependsOn("packageWindowsPortable")
+    onlyIf { System.getProperty("os.name").startsWith("Windows", ignoreCase = true) }
+
+    val appImageDir = layout.buildDirectory.dir("windows-package/app-image/Mihon")
+    from(appImageDir) {
+        into("Mihon")
+    }
+    archiveFileName.set("Mihon-portable-windows.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("windows-package/portable"))
 }

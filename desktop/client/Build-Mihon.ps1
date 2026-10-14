@@ -1,3 +1,8 @@
+param(
+    [ValidateSet("portable", "exe", "msi")]
+    [string]$PackageType = "portable"
+)
+
 $ErrorActionPreference = "Stop"
 
 $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -24,7 +29,12 @@ if ($javaVersion -notmatch 'version "21(\.|")') {
 
 Push-Location $repositoryRoot
 try {
-    & $gradleWrapper :desktop:client:packageWindowsExe --no-daemon
+    $taskName = switch ($PackageType) {
+        "portable" { ":desktop:client:packageWindowsPortableZip" }
+        "exe" { ":desktop:client:packageWindowsExe" }
+        "msi" { ":desktop:client:packageWindowsMsi" }
+    }
+    & $gradleWrapper $taskName --no-daemon
     if ($LASTEXITCODE -ne 0) {
         throw "Gradle failed to build the Windows installer (exit code $LASTEXITCODE)."
     }
@@ -36,10 +46,20 @@ if (-not (Test-Path $outputDirectory)) {
     throw "Build completed but the installer directory was not created: $outputDirectory"
 }
 
-$installer = Get-ChildItem -Path $outputDirectory -Filter "*.exe" -File | Select-Object -First 1
-if (-not $installer) {
-    throw "Build completed but no Windows installer was found in $outputDirectory"
+$packageDirectory = if ($PackageType -eq "portable") {
+    Join-Path $outputDirectory "portable"
+} else {
+    Join-Path $outputDirectory $PackageType
 }
 
-Write-Host "Installer created: $($installer.FullName)"
-Start-Process explorer.exe -ArgumentList $outputDirectory
+if (-not (Test-Path $packageDirectory)) {
+    throw "Build completed but the package directory was not created: $packageDirectory"
+}
+
+$package = Get-ChildItem -Path $packageDirectory -File | Select-Object -First 1
+if (-not $package) {
+    throw "Build completed but no package file was found in $packageDirectory"
+}
+
+Write-Host "Package created: $($package.FullName)"
+Start-Process explorer.exe -ArgumentList $packageDirectory

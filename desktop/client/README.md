@@ -24,18 +24,22 @@ Build a runnable distribution on JDK 21:
 desktop/client/build/install/client/bin/client
 ```
 
-On Windows with JDK 21 installed, build an installer using:
+On Windows with JDK 21 installed, build a portable ZIP without WiX:
 
 ```powershell
-.\gradlew.bat :desktop:client:packageWindowsExe
+.\gradlew.bat :desktop:client:packageWindowsPortableZip
 ```
 
 Alternatively, from a Windows PowerShell prompt in the repository, run
-`.\desktop\client\Build-Mihon.ps1`. It validates Java 21, builds the installer,
-and opens the output directory. The installer task uses `jpackage` and WiX; it
-must run on Windows. The manual GitHub Actions workflow at
+`.\desktop\client\Build-Mihon.ps1 -PackageType portable`. This creates a ZIP
+containing `Mihon.exe` and its bundled runtime, without requiring WiX. To build
+traditional installers, use `-PackageType exe` or `-PackageType msi`; these
+require WiX Toolset on the Windows machine. All `jpackage` tasks must run on
+Windows. The manual GitHub Actions workflow at
 `.github/workflows/build-desktop-windows.yml` builds the installer on a Windows
-runner and uploads it as the `mihon-desktop-windows` artifact for 14 days.
+runner; select portable, EXE, or MSI when starting it. It uploads the selected
+package artifact for 14 days. Pushing to the `add-windows-desktop-build` branch
+automatically builds a portable ZIP; the workflow run appears in GitHub Actions.
 Source plugins
 implement `SourcePluginProvider`, compile against `desktop:source-api`, and
 must be present on the application's runtime classpath. Existing Mihon Android
