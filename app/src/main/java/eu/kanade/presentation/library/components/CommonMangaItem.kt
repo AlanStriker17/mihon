@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.manga.components.MangaCover
+import eu.kanade.presentation.util.rememberAdultContentClick
+import eu.kanade.presentation.util.rememberAdultContentHidden
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.roundedfilled.PlayArrow
 import tachiyomi.i18n.MR
@@ -80,9 +82,14 @@ fun MangaCompactGridItem(
     coverBadgeStart: @Composable (RowScope.() -> Unit)? = null,
     coverBadgeEnd: @Composable (RowScope.() -> Unit)? = null,
 ) {
+    val secureOnClick = rememberAdultContentClick(coverData.isSensitive, onClick)
+    val hidden = rememberAdultContentHidden(coverData)
+    val secureContinueReading = onClickContinueReading?.let {
+        rememberAdultContentClick(coverData.isSensitive, it)
+    }
     GridItemSelectable(
         isSelected = isSelected,
-        onClick = onClick,
+        onClick = secureOnClick,
         onLongClick = onLongClick,
     ) {
         MangaGridCover(
@@ -99,14 +106,14 @@ fun MangaCompactGridItem(
             content = {
                 if (title != null) {
                     CoverTextOverlay(
-                        title = title,
-                        onClickContinueReading = onClickContinueReading,
+                        title = if (hidden) stringResource(MR.strings.adult_content_hidden_title) else title,
+                        onClickContinueReading = secureContinueReading,
                     )
-                } else if (onClickContinueReading != null) {
+                } else if (secureContinueReading != null) {
                     ContinueReadingButton(
                         size = ContinueReadingButtonSizeLarge,
                         iconSize = ContinueReadingButtonIconSizeLarge,
-                        onClick = onClickContinueReading,
+                        onClick = secureContinueReading,
                         modifier = Modifier
                             .padding(ContinueReadingButtonGridPadding)
                             .align(Alignment.BottomEnd),
@@ -186,9 +193,14 @@ fun MangaComfortableGridItem(
     coverBadgeEnd: (@Composable RowScope.() -> Unit)? = null,
     onClickContinueReading: (() -> Unit)? = null,
 ) {
+    val secureOnClick = rememberAdultContentClick(coverData.isSensitive, onClick)
+    val hidden = rememberAdultContentHidden(coverData)
+    val secureContinueReading = onClickContinueReading?.let {
+        rememberAdultContentClick(coverData.isSensitive, it)
+    }
     GridItemSelectable(
         isSelected = isSelected,
-        onClick = onClick,
+        onClick = secureOnClick,
         onLongClick = onLongClick,
     ) {
         Column {
@@ -204,11 +216,11 @@ fun MangaComfortableGridItem(
                 badgesStart = coverBadgeStart,
                 badgesEnd = coverBadgeEnd,
                 content = {
-                    if (onClickContinueReading != null) {
+                    if (secureContinueReading != null) {
                         ContinueReadingButton(
                             size = ContinueReadingButtonSizeLarge,
                             iconSize = ContinueReadingButtonIconSizeLarge,
-                            onClick = onClickContinueReading,
+                            onClick = secureContinueReading,
                             modifier = Modifier
                                 .padding(ContinueReadingButtonGridPadding)
                                 .align(Alignment.BottomEnd),
@@ -218,7 +230,7 @@ fun MangaComfortableGridItem(
             )
             GridItemTitle(
                 modifier = Modifier.padding(4.dp),
-                title = title,
+                title = if (hidden) stringResource(MR.strings.adult_content_hidden_title) else title,
                 style = MaterialTheme.typography.titleSmall,
                 minLines = 2,
                 maxLines = titleMaxLines,
@@ -339,12 +351,17 @@ fun MangaListItem(
     coverAlpha: Float = 1f,
     onClickContinueReading: (() -> Unit)? = null,
 ) {
+    val secureOnClick = rememberAdultContentClick(coverData.isSensitive, onClick)
+    val hidden = rememberAdultContentHidden(coverData)
+    val secureContinueReading = onClickContinueReading?.let {
+        rememberAdultContentClick(coverData.isSensitive, it)
+    }
     Row(
         modifier = Modifier
             .selectedBackground(isSelected)
             .height(56.dp)
             .combinedClickable(
-                onClick = onClick,
+                onClick = secureOnClick,
                 onLongClick = onLongClick,
             )
             .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -357,7 +374,7 @@ fun MangaListItem(
             data = coverData,
         )
         Text(
-            text = title,
+            text = if (hidden) stringResource(MR.strings.adult_content_hidden_title) else title,
             modifier = Modifier
                 .padding(horizontal = 16.dp)
                 .weight(1f),
@@ -366,11 +383,11 @@ fun MangaListItem(
             style = MaterialTheme.typography.bodyMedium,
         )
         BadgeGroup(content = badge)
-        if (onClickContinueReading != null) {
+        if (secureContinueReading != null) {
             ContinueReadingButton(
                 size = ContinueReadingButtonSizeSmall,
                 iconSize = ContinueReadingButtonIconSizeSmall,
-                onClick = onClickContinueReading,
+                onClick = secureContinueReading,
                 modifier = Modifier.padding(start = ContinueReadingButtonListSpacing),
             )
         }

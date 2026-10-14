@@ -38,6 +38,8 @@ import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.SubscriberGate
 import tachiyomi.core.common.util.system.logcat
+import mihon.app.SmartCategorizer
+import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
@@ -61,6 +63,7 @@ class HistoryViewModel(
     @AppCoroutineScope private val appScope: CoroutineScope,
     private val addTracks: AddTracks,
     private val getCategories: GetCategories,
+    private val createCategoryWithName: CreateCategoryWithName,
     private val getDuplicateLibraryManga: GetDuplicateLibraryManga,
     private val getHistory: GetHistory,
     private val getManga: GetManga,
@@ -182,12 +185,28 @@ class HistoryViewModel(
     }
 
     fun moveMangaToCategoriesAndAddToLibrary(manga: Manga, categories: List<Long>) {
-        moveMangaToCategory(manga.id, categories)
-        if (manga.favorite) return
-
-        viewModelScope.launch {
-            updateManga.awaitUpdateFavorite(manga.id, true)
+        viewModelScope.launch(Dispatchers.IO) {
+            val categoryIds = if (manga.favorite) categories else smartCategoryIds(manga, categories)
+            setMangaCategories.await(manga.id, categoryIds)
+            if (!manga.favorite) {
+                updateManga.awaitUpdateFavorite(manga.id, true)
+            }
         }
+    }
+
+    private suspend fun smartCategoryIds(manga: Manga, categoryIds: List<Long>): List<Long> {
+        val source = sourceManager.getOrStub(manga.source)
+        val type = SmartCategorizer.classify(manga, source.name, source.lang)
+        val smartCategoryId = SmartCategorizer.findOrCreateCategoryId(
+            type = type,
+            getCategories = { getCategories.await() },
+            createCategory = createCategoryWithName::await,
+        )
+        return (categoryIds + listOfNotNull(smartCategoryId)).distinct()
+    }
+
+    private suspend fun setSmartCategories(manga: Manga, categoryIds: List<Long>) {
+        setMangaCategories.await(manga.id, smartCategoryIds(manga, categoryIds))
     }
 
     private suspend fun getMangaCategoryIds(manga: Manga): List<Long> {
@@ -221,14 +240,16 @@ class HistoryViewModel(
                 defaultCategory != null -> {
                     val result = updateManga.awaitUpdateFavorite(manga.id, true)
                     if (!result) return@launch
-                    moveMangaToCategory(manga.id, defaultCategory)
+                    setSmartCategories(manga, listOf(defaultCategory.id))
                 }
 
                 // Automatic 'Default' or no categories
-                defaultCategoryId == 0L || categories.isEmpty() -> {
+                defaultCategoryId == 0L ||
+                    categories.isEmpty() ||
+                    categories.all { SmartCategorizer.isSmartCategoryName(it.name) } -> {
                     val result = updateManga.awaitUpdateFavorite(manga.id, true)
                     if (!result) return@launch
-                    moveMangaToCategory(manga.id, null)
+                    setSmartCategories(manga, emptyList())
                 }
 
                 // Choose a category

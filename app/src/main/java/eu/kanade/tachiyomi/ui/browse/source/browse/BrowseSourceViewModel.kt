@@ -46,6 +46,7 @@ import kotlinx.coroutines.launch
 import mihon.core.metro.AppCoroutineScope
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
+import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
@@ -58,6 +59,7 @@ import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.service.SourceManager
+import mihon.app.SmartCategorizer
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
@@ -74,6 +76,7 @@ class BrowseSourceViewModel(
     private val getRemoteManga: GetRemoteManga,
     private val getDuplicateLibraryManga: GetDuplicateLibraryManga,
     private val getCategories: GetCategories,
+    private val createCategoryWithName: CreateCategoryWithName,
     private val setMangaCategories: SetMangaCategories,
     private val setMangaDefaultChapterFlags: SetMangaDefaultChapterFlags,
     private val getManga: GetManga,
@@ -263,14 +266,16 @@ class BrowseSourceViewModel(
             when {
                 // Default category set
                 defaultCategory != null -> {
-                    moveMangaToCategories(manga, defaultCategory)
+                    setSmartCategories(manga, listOf(defaultCategory.id))
 
                     changeMangaFavorite(manga)
                 }
 
                 // Automatic 'Default' or no categories
-                defaultCategoryId == 0 || categories.isEmpty() -> {
-                    moveMangaToCategories(manga)
+                defaultCategoryId == 0 ||
+                    categories.isEmpty() ||
+                    categories.all { SmartCategorizer.isSmartCategoryName(it.name) } -> {
+                    setSmartCategories(manga, emptyList())
 
                     changeMangaFavorite(manga)
                 }
@@ -289,6 +294,27 @@ class BrowseSourceViewModel(
         }
     }
 
+    fun addFavorite(manga: Manga, categoryIds: List<Long>) {
+        viewModelScope.launch {
+            setSmartCategories(manga, categoryIds)
+            changeMangaFavorite(manga)
+        }
+    }
+
+    private suspend fun setSmartCategories(manga: Manga, categoryIds: List<Long>) {
+        val source = sourceManager.getOrStub(manga.source)
+        val type = SmartCategorizer.classify(manga, source.name, source.lang)
+        val smartCategoryId = SmartCategorizer.findOrCreateCategoryId(
+            type = type,
+            getCategories = { getCategories() },
+            createCategory = createCategoryWithName::await,
+        )
+        setMangaCategories.await(
+            mangaId = manga.id,
+            categoryIds = (categoryIds + listOfNotNull(smartCategoryId)).distinct(),
+        )
+    }
+
     /**
      * Get user categories.
      *
@@ -303,19 +329,6 @@ class BrowseSourceViewModel(
 
     suspend fun getDuplicateLibraryManga(manga: Manga): List<MangaWithChapterCount> {
         return getDuplicateLibraryManga.invoke(manga)
-    }
-
-    private fun moveMangaToCategories(manga: Manga, vararg categories: Category) {
-        moveMangaToCategories(manga, categories.filter { it.id != 0L }.map { it.id })
-    }
-
-    fun moveMangaToCategories(manga: Manga, categoryIds: List<Long>) {
-        viewModelScope.launch(Dispatchers.IO) {
-            setMangaCategories.await(
-                mangaId = manga.id,
-                categoryIds = categoryIds.toList(),
-            )
-        }
     }
 
     fun openFilterSheet() {

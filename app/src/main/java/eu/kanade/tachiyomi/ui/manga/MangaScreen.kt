@@ -208,6 +208,7 @@ class MangaScreen(
             is MangaViewModel.Dialog.DuplicateManga -> {
                 DuplicateMangaDialog(
                     duplicates = dialog.duplicates,
+                    higherChapterSources = dialog.higherChapterSources,
                     onDismissRequest = onDismissRequest,
                     onConfirm = { viewModel.toggleFavorite(onRemoved = {}, checkDuplicate = false) },
                     onOpenManga = { navigator.push(MangaScreen(it.id)) },

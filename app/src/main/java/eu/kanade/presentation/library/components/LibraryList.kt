@@ -5,13 +5,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.ui.library.LibraryItem
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.MangaCover
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
 import tachiyomi.presentation.core.util.plus
+import mihon.app.di.appGraph
+import tachiyomi.presentation.core.util.collectAsState
 
 @Composable
 internal fun LibraryList(
@@ -24,6 +28,7 @@ internal fun LibraryList(
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
 ) {
+    val privacyMode by LocalContext.current.appGraph.basePreferences.publicPrivacyMode.collectAsState()
     FastScrollLazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding + PaddingValues(vertical = 8.dp),
@@ -52,8 +57,12 @@ internal fun LibraryList(
                     isMangaFavorite = manga.favorite,
                     url = manga.thumbnailUrl,
                     lastModified = manga.coverLastModified,
+                    isSensitive = libraryItem.isAdult,
+                    adultContentMode = libraryItem.adultContentMode,
+                    privacyTitle = manga.title.takeIf { privacyMode },
                 ),
                 badge = {
+                    MangaStatusBadge(manga.status)
                     DownloadsBadge(count = libraryItem.badges.downloadCount)
                     UnreadBadge(count = libraryItem.badges.unreadCount)
                     LanguageBadge(

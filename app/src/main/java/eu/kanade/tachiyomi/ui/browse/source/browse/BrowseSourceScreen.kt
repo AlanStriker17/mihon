@@ -285,8 +285,7 @@ data class BrowseSourceScreen(
                     onDismissRequest = onDismissRequest,
                     onEditCategories = { navigator.push(CategoryScreen()) },
                     onConfirm = { include, _ ->
-                        viewModel.changeMangaFavorite(dialog.manga)
-                        viewModel.moveMangaToCategories(dialog.manga, include)
+                        viewModel.addFavorite(dialog.manga, include)
                     },
                 )
             }

@@ -140,6 +140,7 @@ class BackupNotifier(
         path: String?,
         file: String?,
         sync: Boolean,
+        hasMissingExtensions: Boolean,
     ) {
         val contentTitle = if (sync) {
             context.stringResource(MR.strings.library_sync_complete)
@@ -167,6 +168,13 @@ class BackupNotifier(
             )
 
             clearActions()
+            if (hasMissingExtensions) {
+                addAction(
+                    MaterialSymbolsR.drawable.rounded_filled_extension,
+                    context.stringResource(MR.strings.backup_install_missing_extensions),
+                    NotificationReceiver.openExtensionsPendingActivity(context),
+                )
+            }
             if (errorCount > 0 && !path.isNullOrEmpty() && !file.isNullOrEmpty()) {
                 val destFile = File(path, file)
                 val uri = destFile.getUriCompat(context)

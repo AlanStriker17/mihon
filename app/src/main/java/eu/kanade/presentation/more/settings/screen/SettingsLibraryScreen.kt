@@ -12,12 +12,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.util.fastMap
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.category.visualName
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.widget.TriStateListDialog
+import eu.kanade.domain.base.AdultContentMode
+import eu.kanade.tachiyomi.util.system.AuthenticatorUtil.authenticate
+import eu.kanade.tachiyomi.util.system.AuthenticatorUtil.isAuthenticationSupported
 import eu.kanade.tachiyomi.data.library.LibraryUpdateWorker
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import kotlinx.coroutines.launch
@@ -34,6 +38,7 @@ import tachiyomi.domain.library.service.LibraryPreferences.Companion.MANGA_OUTSI
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.MARK_DUPLICATE_CHAPTER_READ_EXISTING
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.MARK_DUPLICATE_CHAPTER_READ_NEW
 import tachiyomi.i18n.MR
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
@@ -49,9 +54,40 @@ object SettingsLibraryScreen : SearchableSettings {
         val context = LocalContext.current
         val getCategories = remember { context.appGraph.getCategories }
         val libraryPreferences = remember { context.appGraph.libraryPreferences }
+        val basePreferences = remember { context.appGraph.basePreferences }
         val allCategories by getCategories.subscribe().collectAsState(initial = emptyList())
 
         return listOf(
+            Preference.PreferenceGroup(
+                title = stringResource(MR.strings.pref_category_security),
+                preferenceItems = listOf(
+                    Preference.PreferenceItem.ListPreference(
+                        preference = basePreferences.adultContentMode,
+                        entries = mapOf(
+                            AdultContentMode.SHOW.value to stringResource(MR.strings.adult_content_show),
+                            AdultContentMode.BLUR.value to stringResource(MR.strings.adult_content_blur),
+                            AdultContentMode.HIDE.value to stringResource(MR.strings.adult_content_hide),
+                        ),
+                        title = stringResource(MR.strings.pref_adult_content_mode),
+                        subtitle = stringResource(MR.strings.pref_adult_content_mode_summary),
+                        onValueChanged = { newValue ->
+                            if (newValue < basePreferences.adultContentMode.get()) {
+                                context.isAuthenticationSupported() &&
+                                    (context as FragmentActivity).authenticate(
+                                        title = context.stringResource(MR.strings.pref_adult_content_mode),
+                                    )
+                            } else {
+                                true
+                            }
+                        },
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = basePreferences.publicPrivacyMode,
+                        title = stringResource(MR.strings.pref_public_privacy_mode),
+                        subtitle = stringResource(MR.strings.pref_public_privacy_mode_summary),
+                    ),
+                ),
+            ),
             getCategoriesGroup(LocalNavigator.currentOrThrow, allCategories, libraryPreferences),
             getGlobalUpdateGroup(allCategories, libraryPreferences),
             getBehaviorGroup(libraryPreferences),

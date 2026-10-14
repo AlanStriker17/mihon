@@ -77,6 +77,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
+import mihon.app.SmartCategorizer
 import mihon.core.metro.AppCoroutineScope
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.system.logcat
@@ -826,7 +827,14 @@ class ReaderViewModel(
         val default = readerPreferences.defaultReadingMode.get()
         val readingMode = ReadingMode.fromPreference(manga?.readingMode?.toInt())
         return when {
-            resolveDefault && readingMode == ReadingMode.DEFAULT -> default
+            resolveDefault && readingMode == ReadingMode.DEFAULT -> {
+                val manga = manga ?: return default
+                val source = source ?: return default
+                when (SmartCategorizer.classify(manga, source.name, source.lang).readerMode) {
+                    SmartCategorizer.ReaderMode.SINGLE_PAGE -> ReadingMode.RIGHT_TO_LEFT.flagValue
+                    SmartCategorizer.ReaderMode.CONTINUOUS_VERTICAL -> ReadingMode.CONTINUOUS_VERTICAL.flagValue
+                }
+            }
             else -> manga?.readingMode?.toInt() ?: default
         }
     }

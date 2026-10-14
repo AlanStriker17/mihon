@@ -70,6 +70,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.i18n.MR
+import mihon.app.SmartCategorizer
 import tachiyomi.presentation.core.components.Badge
 import tachiyomi.presentation.core.components.BadgeGroup
 import tachiyomi.presentation.core.components.material.padding
@@ -80,6 +81,7 @@ import tachiyomi.presentation.core.util.secondaryItemAlpha
 @Composable
 fun DuplicateMangaDialog(
     duplicates: List<MangaWithChapterCount>,
+    higherChapterSources: List<SmartCategorizer.HigherChapterSource> = emptyList(),
     onDismissRequest: () -> Unit,
     onConfirm: () -> Unit,
     onOpenManga: (manga: Manga) -> Unit,
@@ -116,6 +118,19 @@ fun DuplicateMangaDialog(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.then(horizontalPaddingModifier),
             )
+
+            higherChapterSources.forEach { source ->
+                Text(
+                    text = stringResource(
+                        MR.strings.smart_more_chapters,
+                        source.sourceName,
+                        source.additionalChapters,
+                        source.chapterCount,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.then(horizontalPaddingModifier),
+                )
+            }
 
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),

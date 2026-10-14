@@ -4,10 +4,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import eu.kanade.tachiyomi.ui.library.LibraryItem
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.MangaCover
+import mihon.app.di.appGraph
+import tachiyomi.presentation.core.util.collectAsState
 
 @Composable
 internal fun LibraryComfortableGrid(
@@ -21,6 +25,7 @@ internal fun LibraryComfortableGrid(
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
 ) {
+    val privacyMode by LocalContext.current.appGraph.basePreferences.publicPrivacyMode.collectAsState()
     LazyLibraryGrid(
         modifier = Modifier.fillMaxSize(),
         columns = columns,
@@ -42,8 +47,12 @@ internal fun LibraryComfortableGrid(
                     isMangaFavorite = manga.favorite,
                     url = manga.thumbnailUrl,
                     lastModified = manga.coverLastModified,
+                    isSensitive = libraryItem.isAdult,
+                    adultContentMode = libraryItem.adultContentMode,
+                    privacyTitle = manga.title.takeIf { privacyMode },
                 ),
                 coverBadgeStart = {
+                    MangaStatusBadge(manga.status)
                     DownloadsBadge(count = libraryItem.badges.downloadCount)
                     UnreadBadge(count = libraryItem.badges.unreadCount)
                 },

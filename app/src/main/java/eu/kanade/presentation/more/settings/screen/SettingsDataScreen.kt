@@ -52,6 +52,7 @@ import eu.kanade.tachiyomi.data.backup.restore.BackupRestoreWorker
 import eu.kanade.tachiyomi.data.export.LibraryExporter
 import eu.kanade.tachiyomi.data.export.LibraryExporter.ExportOptions
 import eu.kanade.tachiyomi.util.system.DeviceUtil
+import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.system.workManager
 import kotlinx.coroutines.CancellationException
@@ -205,6 +206,17 @@ object SettingsDataScreen : SearchableSettings {
 
             navigator.push(RestoreBackupScreen(it.toString()))
         }
+        val chooseBackupToShare = rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            if (uri != null) {
+                try {
+                    context.startActivity(uri.toShareIntent(context, "application/x-protobuf+gzip"))
+                } catch (_: ActivityNotFoundException) {
+                    context.toast(MR.strings.file_picker_error)
+                }
+            }
+        }
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.label_backup),
@@ -225,7 +237,7 @@ object SettingsDataScreen : SearchableSettings {
                                     modifier = Modifier.fillMaxHeight(),
                                     checked = false,
                                     onCheckedChange = { navigator.push(CreateBackupScreen()) },
-                                    shape = SegmentedButtonDefaults.itemShape(0, 2),
+                                    shape = SegmentedButtonDefaults.itemShape(0, 3),
                                 ) {
                                     Text(stringResource(MR.strings.pref_create_backup))
                                 }
@@ -244,9 +256,19 @@ object SettingsDataScreen : SearchableSettings {
                                             }
                                         }
                                     },
-                                    shape = SegmentedButtonDefaults.itemShape(1, 2),
+                                    shape = SegmentedButtonDefaults.itemShape(1, 3),
                                 ) {
                                     Text(stringResource(MR.strings.pref_restore_backup))
+                                }
+                                SegmentedButton(
+                                    modifier = Modifier.fillMaxHeight(),
+                                    checked = false,
+                                    onCheckedChange = {
+                                        chooseBackupToShare.launch(arrayOf("*/*"))
+                                    },
+                                    shape = SegmentedButtonDefaults.itemShape(2, 3),
+                                ) {
+                                    Text(stringResource(MR.strings.action_share_backup))
                                 }
                             }
                         },

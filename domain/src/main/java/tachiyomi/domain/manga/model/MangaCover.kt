@@ -11,6 +11,9 @@ data class MangaCover(
     val isMangaFavorite: Boolean,
     val url: String?,
     val lastModified: Instant?,
+    val isSensitive: Boolean = false,
+    val adultContentMode: Int = 0,
+    val privacyTitle: String? = null,
 )
 
 fun Manga.asMangaCover(): MangaCover {

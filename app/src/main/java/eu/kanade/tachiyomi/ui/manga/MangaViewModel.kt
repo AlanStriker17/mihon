@@ -73,6 +73,7 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.core.metro.AppCoroutineScope
+import mihon.app.SmartCategorizer
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import mihon.domain.source.interactor.UpdateMangaFromRemote
 import tachiyomi.core.common.i18n.stringResource
@@ -83,6 +84,7 @@ import tachiyomi.core.common.util.lang.SubscriberGate
 import tachiyomi.core.common.util.lang.pausedWhileUnsubscribed
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
@@ -96,6 +98,7 @@ import tachiyomi.domain.chapter.service.missingChaptersCount
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
+import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
@@ -121,6 +124,7 @@ class MangaViewModel(
     private val downloadManager: DownloadManager,
     private val downloadCache: DownloadCache,
     private val getMangaAndChapters: GetMangaWithChapters,
+    getLibraryManga: GetLibraryManga,
     private val getDuplicateLibraryManga: GetDuplicateLibraryManga,
     private val getAvailableScanlators: GetAvailableScanlators,
     private val getExcludedScanlators: GetExcludedScanlators,
@@ -131,6 +135,7 @@ class MangaViewModel(
     private val updateChapter: UpdateChapter,
     private val updateManga: UpdateManga,
     private val getCategories: GetCategories,
+    private val createCategoryWithName: CreateCategoryWithName,
     private val getTracks: GetTracks,
     private val addTracks: AddTracks,
     private val setMangaCategories: SetMangaCategories,
@@ -142,6 +147,8 @@ class MangaViewModel(
 ) : ViewModel() {
 
     private val subscriberGate = SubscriberGate()
+    private val libraryManga = getLibraryManga.subscribe()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds.inWholeMilliseconds), emptyList())
 
     @AssistedFactory
     @ManualViewModelAssistedFactoryKey
@@ -254,14 +261,13 @@ class MangaViewModel(
         scanlators,
         trackers,
         combine(selectedChapterIds, queuedDownloadStates.pausedWhileUnsubscribed(), ::Pair),
-        combine(dialog, isRefreshingData, ::Pair),
-    ) {
-            mangaAndChapters,
-            (availableScanlators, excludedScanlators),
-            (trackingCount, hasLoggedInTrackers),
-            (selectedIds, downloads),
-            (dialog, isRefreshingData),
-        ->
+        combine(combine(dialog, isRefreshingData, ::Pair), libraryManga, ::Pair),
+    ) { mangaAndChapters, scanlatorData, trackerData, chapterData, dialogAndLibraryData ->
+        val (availableScanlators, excludedScanlators) = scanlatorData
+        val (trackingCount, hasLoggedInTrackers) = trackerData
+        val (selectedIds, downloads) = chapterData
+        val (dialogAndRefreshingData, libraryManga) = dialogAndLibraryData
+        val (dialog, isRefreshingData) = dialogAndRefreshingData
         State.Success(
             manga = mangaAndChapters.manga,
             source = mangaAndChapters.source,
@@ -282,12 +288,14 @@ class MangaViewModel(
             isRefreshingData = isRefreshingData,
             dialog = dialog,
             hideMissingChapters = hideMissingChapters,
+            recommendations = libraryManga.map { it.manga }.filterNot { it.id == mangaAndChapters.manga.id },
         )
     }
         // Composition would otherwise build these on first read, on the main thread, for every new state
         .onEach {
             it.processedChapters
             it.chapterListItems
+            it.chapterDisplayGroups
             it.isAnySelected
             it.selectedChapters
             it.hasUnreadChapters
@@ -427,7 +435,18 @@ class MangaViewModel(
                     val duplicates = getDuplicateLibraryManga(manga)
 
                     if (duplicates.isNotEmpty()) {
-                        dialog.value = Dialog.DuplicateManga(manga, duplicates)
+                        val sourceCounts = duplicates.map {
+                            SmartCategorizer.SourceChapterCount(
+                                sourceName = sourceManager.getOrStub(it.manga.source).name,
+                                chapterCount = it.chapterCount,
+                            )
+                        }
+                        val higherChapterSources = SmartCategorizer.higherChapterSources(
+                            currentSourceName = state.source.name,
+                            currentChapterCount = state.chapters.size.toLong(),
+                            otherSources = sourceCounts,
+                        )
+                        dialog.value = Dialog.DuplicateManga(manga, duplicates, higherChapterSources)
                         return@launch
                     }
                 }
@@ -441,14 +460,16 @@ class MangaViewModel(
                     defaultCategory != null -> {
                         val result = updateManga.awaitUpdateFavorite(manga.id, true)
                         if (!result) return@launch
-                        moveMangaToCategory(defaultCategory)
+                        setSmartCategories(manga, listOf(defaultCategory.id))
                     }
 
                     // Automatic 'Default' or no categories
-                    defaultCategoryId == 0L || categories.isEmpty() -> {
+                    defaultCategoryId == 0L ||
+                        categories.isEmpty() ||
+                        categories.all { SmartCategorizer.isSmartCategoryName(it.name) } -> {
                         val result = updateManga.awaitUpdateFavorite(manga.id, true)
                         if (!result) return@launch
-                        moveMangaToCategory(null)
+                        setSmartCategories(manga, emptyList())
                     }
 
                     // Choose a category
@@ -528,12 +549,32 @@ class MangaViewModel(
     }
 
     fun moveMangaToCategoriesAndAddToLibrary(manga: Manga, categories: List<Long>) {
-        moveMangaToCategory(categories)
-        if (manga.favorite) return
-
-        viewModelScope.launch {
-            updateManga.awaitUpdateFavorite(manga.id, true)
+        viewModelScope.launch(Dispatchers.IO) {
+            val categoryIds = if (manga.favorite) {
+                categories
+            } else {
+                smartCategoryIds(manga, categories)
+            }
+            setMangaCategories.await(manga.id, categoryIds)
+            if (!manga.favorite) {
+                updateManga.awaitUpdateFavorite(manga.id, true)
+            }
         }
+    }
+
+    private suspend fun setSmartCategories(manga: Manga, categoryIds: List<Long>) {
+        setMangaCategories.await(manga.id, smartCategoryIds(manga, categoryIds))
+    }
+
+    private suspend fun smartCategoryIds(manga: Manga, categoryIds: List<Long>): List<Long> {
+        val source = sourceManager.getOrStub(manga.source)
+        val type = SmartCategorizer.classify(manga, source.name, source.lang)
+        val smartCategoryId = SmartCategorizer.findOrCreateCategoryId(
+            type = type,
+            getCategories = { getCategories.await() },
+            createCategory = createCategoryWithName::await,
+        )
+        return (categoryIds + listOfNotNull(smartCategoryId)).distinct()
     }
 
     /**
@@ -1054,7 +1095,11 @@ class MangaViewModel(
             val initialSelection: List<CheckboxState<Category>>,
         ) : Dialog
         data class DeleteChapters(val chapters: List<Chapter>) : Dialog
-        data class DuplicateManga(val manga: Manga, val duplicates: List<MangaWithChapterCount>) : Dialog
+        data class DuplicateManga(
+            val manga: Manga,
+            val duplicates: List<MangaWithChapterCount>,
+            val higherChapterSources: List<SmartCategorizer.HigherChapterSource> = emptyList(),
+        ) : Dialog
         data class Migrate(val target: Manga, val current: Manga) : Dialog
         data class SetFetchInterval(val manga: Manga) : Dialog
         data object RemoveFromLibrary : Dialog
@@ -1113,6 +1158,7 @@ class MangaViewModel(
             val isRefreshingData: Boolean = false,
             val dialog: Dialog? = null,
             val hideMissingChapters: Boolean = false,
+            val recommendations: List<Manga> = emptyList(),
         ) : State {
             val processedChapters by lazy {
                 chapters.applyFilters(manga).toList()
@@ -1167,6 +1213,18 @@ class MangaViewModel(
                                 count = missingCount,
                             )
                         }
+                }
+            }
+
+            val chapterDisplayGroups by lazy {
+                ArcProcessor.group(chapterListItems) { item ->
+                    (item as? ChapterList.Item)?.chapter?.name.orEmpty()
+                }.map { group ->
+                    ArcProcessor.Group(
+                        id = group.id,
+                        title = group.title,
+                        chapters = ChapterAggregator.aggregate(group.chapters),
+                    )
                 }
             }
 

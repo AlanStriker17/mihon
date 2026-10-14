@@ -249,6 +249,7 @@ dependencies {
     implementation(libs.androidx.constraintLayout)
     implementation(libs.androidx.core)
     implementation(libs.androidx.coreSplashScreen)
+    implementation(libs.androidx.palette)
     implementation(libs.androidx.recyclerView)
     implementation(libs.androidx.viewPager)
     implementation(libs.androidx.profileInstaller)
@@ -287,6 +288,7 @@ dependencies {
 
     // Image loading
     implementation(libs.bundles.coil)
+    implementation(libs.mlkit.text.recognition)
     implementation(libs.subsamplingScaleImageView) {
         exclude(module = "image-decoder")
     }

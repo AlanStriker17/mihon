@@ -24,6 +24,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.more.LogoHeader
+import eu.kanade.presentation.more.CustomFeatureChangelogDialog
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.util.LocalBackPress
 import eu.kanade.presentation.util.Screen
@@ -73,6 +74,7 @@ object AboutScreen : Screen() {
         val handleBack = LocalBackPress.current
         val navigator = LocalNavigator.currentOrThrow
         var isCheckingUpdates by remember { mutableStateOf(false) }
+        var showCustomChangelog by remember { mutableStateOf(false) }
         val crashLogUtil = remember { context.appGraph.crashLogUtil }
 
         Scaffold(
@@ -154,6 +156,14 @@ object AboutScreen : Screen() {
 
                 item {
                     TextPreferenceWidget(
+                        title = stringResource(MR.strings.custom_features_title),
+                        subtitle = stringResource(MR.strings.custom_features_summary),
+                        onPreferenceClick = { showCustomChangelog = true },
+                    )
+                }
+
+                item {
+                    TextPreferenceWidget(
                         title = stringResource(MR.strings.licenses),
                         onPreferenceClick = { navigator.push(OpenSourceLicensesScreen()) },
                     )
@@ -205,6 +215,9 @@ object AboutScreen : Screen() {
                         )
                     }
                 }
+            }
+            if (showCustomChangelog) {
+                CustomFeatureChangelogDialog(onDismiss = { showCustomChangelog = false })
             }
         }
     }

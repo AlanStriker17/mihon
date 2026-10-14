@@ -9,6 +9,8 @@ data class LibraryItem(
     val isLocal: Boolean,
     val sourceName: String,
     val sourceLanguage: String,
+    val isAdult: Boolean,
+    val adultContentMode: Int,
     val badges: Badges,
 ) {
     val id: Long = libraryManga.id

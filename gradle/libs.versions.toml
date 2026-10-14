@@ -17,6 +17,7 @@ androidx-interpolator = "1.0.0"
 androidx-lifecycle = "2.11.0"
 androidx-navigationEvent = "1.2.0"
 androidx-paging = "3.5.3"
+androidx-palette = "1.0.0"
 androidx-preference = "1.2.1"
 androidx-profileInstaller = "1.4.1"
 androidx-recyclerView = "1.4.0"
@@ -54,6 +55,7 @@ kotlinx-serialization = "1.11.0"
 ktlint = "1.8.0"
 leakCanary = "2.14"
 logcat = "0.4"
+mlkit-text-recognition = "16.0.1"
 markdown = "0.45.0"
 material = "1.14.0"
 materialKolor = "5.0.1"
@@ -81,6 +83,8 @@ webgpuviewer = "52"
 xmlutil = "1.0.2"
 
 [libraries]
+androidx-palette = { module = "androidx.palette:palette-ktx", version.ref = "androidx-palette" }
+mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "mlkit-text-recognition" }
 aboutLibraries-compose = { module = "com.mikepenz:aboutlibraries-compose-m3", version.ref = "aboutLibraries" }
 android-desugar = { module = "com.android.tools:desugar_jdk_libs", version.ref = "android-desugar" }
 android-gradle = { module = "com.android.tools.build:gradle", version.ref = "android-gradle" }

@@ -17,23 +17,30 @@ import eu.kanade.tachiyomi.data.backup.restore.restorers.ExtensionStoreRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.MangaRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.PreferenceRestorer
 import eu.kanade.tachiyomi.data.download.DownloadCache
+import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.chunked
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.withIndex
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.repository.StubSourceRepository
 import tachiyomi.domain.source.service.SourceManager
+import mihon.domain.extension.interactor.UpdateExtensionStores
 import tachiyomi.i18n.MR
 import java.io.File
 import java.text.SimpleDateFormat
@@ -44,6 +51,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.atomics.incrementAndFetch
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalAtomicApi::class)
 @AssistedInject
@@ -59,6 +67,8 @@ class BackupRestorer(
     private val backupDecoder: BackupDecoder,
     private val sourceManager: SourceManager,
     private val stubSourceRepository: StubSourceRepository,
+    private val extensionManager: ExtensionManager,
+    private val updateExtensionStores: UpdateExtensionStores,
 ) {
 
     @AssistedFactory
@@ -69,6 +79,8 @@ class BackupRestorer(
     private var restoreAmount = 0
     private val restoreProgress = AtomicInt(0)
     private val errors = CopyOnWriteArrayList<Pair<Date, String>>()
+    private var hasMissingExtensionsToInstall = false
+    private val missingExtensionSourceIds = mutableSetOf<Long>()
 
     /**
      * Mapping of source ID to source name from backup data
@@ -99,6 +111,7 @@ class BackupRestorer(
             logFile.parent,
             logFile.name,
             isSync,
+            hasMissingExtensionsToInstall,
         )
     }
 
@@ -155,6 +168,67 @@ class BackupRestorer(
 
             // TODO: optionally trigger online library + tracker update
         }
+
+        if (options.libraryEntries) {
+            restoreMissingExtensions(backupMaps)
+        }
+    }
+
+    private suspend fun restoreMissingExtensions(backupSources: List<BackupSource>) {
+        val sourceIds = backupSources.map { it.sourceId }.toSet()
+        val installedSourceIds = sourceIds.filterTo(mutableSetOf()) { sourceManager.get(it) != null }
+        val missingSourceIds = sourceIds - installedSourceIds
+        if (missingSourceIds.isEmpty()) return
+
+        val availableExtensions = try {
+            updateExtensionStores()
+            withTimeoutOrNull(45.seconds) {
+                extensionManager.availableExtensionsFlow.first { available ->
+                    available.any { extension -> extension.sources.any { it.id in missingSourceIds } }
+                }
+            }.orEmpty()
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            logcat(LogPriority.WARN, e) { "Failed to refresh extension indexes during backup restore" }
+            errors.add(Date() to "Failed to refresh extension indexes: ${e.message}")
+            hasMissingExtensionsToInstall = true
+            missingExtensionSourceIds += missingSourceIds
+            persistMissingExtensionSourceIds()
+            return
+        }
+
+        val installCandidates = availableExtensions
+            .filter { extension -> extension.sources.any { it.id in missingSourceIds } }
+            .distinctBy(Extension.Available::pkgName)
+        val matchedSourceIds = installCandidates
+            .flatMapTo(mutableSetOf()) { extension -> extension.sources.map { it.id } }
+        if (missingSourceIds.any { it !in matchedSourceIds }) {
+            hasMissingExtensionsToInstall = true
+            val unmatchedSourceIds = missingSourceIds - matchedSourceIds
+            missingExtensionSourceIds += unmatchedSourceIds
+            errors.add(Date() to "No configured extension repository contains all missing backup sources")
+        }
+
+        installCandidates.forEach { extension ->
+            try {
+                extensionManager.installExtension(extension).collect()
+            } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
+                hasMissingExtensionsToInstall = true
+                missingExtensionSourceIds += extension.sources.map { it.id }.filter { it in missingSourceIds }
+                errors.add(Date() to "Failed to install extension ${extension.name}: ${e.message}")
+                logcat(LogPriority.WARN, e) { "Failed to install extension ${extension.pkgName} during backup restore" }
+            }
+        }
+        persistMissingExtensionSourceIds()
+    }
+
+    private fun persistMissingExtensionSourceIds() {
+        if (missingExtensionSourceIds.isEmpty()) return
+        context.getSharedPreferences("backup_extension_restore", Context.MODE_PRIVATE)
+            .edit()
+            .putStringSet("missing_source_ids", missingExtensionSourceIds.mapTo(mutableSetOf()) { it.toString() })
+            .apply()
     }
 
     // Without a stub, a source that isn't installed has no name for the next backup to write

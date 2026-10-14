@@ -39,6 +39,10 @@ class BasePreferences(
 
     val highQualityRenderer: Preference<Boolean> = preferenceStore.getBoolean("pref_high_quality_renderer_key", false)
 
+    val adultContentMode: Preference<Int> = preferenceStore.getInt("adult_content_mode", AdultContentMode.BLUR.value)
+
+    val publicPrivacyMode: Preference<Boolean> = preferenceStore.getBoolean("public_privacy_mode", false)
+
     val installationId: Preference<String> = preferenceStore.getString(Preference.appStateKey("installation_id"), "")
 
     val donationCampaignShown: Preference<Boolean> = preferenceStore.getBoolean(

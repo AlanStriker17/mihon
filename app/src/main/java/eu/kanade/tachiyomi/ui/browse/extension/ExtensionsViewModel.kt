@@ -19,7 +19,9 @@ import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,7 +38,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import logcat.LogPriority
 import tachiyomi.i18n.MR
+import tachiyomi.core.common.util.system.logcat
+import eu.kanade.tachiyomi.util.system.toast
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -62,6 +67,12 @@ class ExtensionsViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5.seconds), 0)
 
     private val isRefreshing = MutableStateFlow(false)
+    val missingBackupExtensionSourceIds = MutableStateFlow<Set<Long>>(
+        context.getSharedPreferences("backup_extension_restore", Context.MODE_PRIVATE)
+            .getStringSet("missing_source_ids", emptySet())
+            .orEmpty()
+            .mapNotNullTo(mutableSetOf(), String::toLongOrNull),
+    )
 
     private fun extensionMapper(map: Map<String, InstallStep>): (Extension) -> ExtensionUiModel.Item = {
         ExtensionUiModel.Item(it, map[it.pkgName] ?: InstallStep.Idle)
@@ -179,6 +190,43 @@ class ExtensionsViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             extensionManager.installExtension(extension).collectToInstallUpdate(extension)
         }
+    }
+
+    fun installMissingBackupExtensions() {
+        val sourceIds = missingBackupExtensionSourceIds.value
+        if (sourceIds.isEmpty()) return
+
+        val candidates = extensionManager.availableExtensionsFlow.value
+            .filter { extension -> extension.sources.any { it.id in sourceIds } }
+            .distinctBy(Extension.Available::pkgName)
+        if (candidates.isEmpty()) {
+            context.toast(MR.strings.backup_missing_extensions_unavailable)
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            candidates.forEach { extension ->
+                try {
+                    extensionManager.installExtension(extension).collectToInstallUpdate(extension)
+                    val installedSourceIds = extension.sources.mapTo(mutableSetOf()) { it.id }
+                    updateMissingBackupExtensionSourceIds(sourceIds - installedSourceIds)
+                } catch (e: Exception) {
+                    currentCoroutineContext().ensureActive()
+                    logcat(LogPriority.ERROR, e) {
+                        "Failed to install missing backup extension ${extension.pkgName}"
+                    }
+                    context.toast(e.message)
+                }
+            }
+        }
+    }
+
+    private fun updateMissingBackupExtensionSourceIds(sourceIds: Set<Long>) {
+        missingBackupExtensionSourceIds.value = sourceIds
+        context.getSharedPreferences("backup_extension_restore", Context.MODE_PRIVATE)
+            .edit()
+            .putStringSet("missing_source_ids", sourceIds.mapTo(mutableSetOf()) { it.toString() })
+            .apply()
     }
 
     fun updateExtension(extension: Extension.Installed) {

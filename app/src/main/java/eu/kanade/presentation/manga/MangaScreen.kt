@@ -2,9 +2,12 @@ package eu.kanade.presentation.manga
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -23,19 +27,24 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallExtendedFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.animateFloatingActionButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -55,11 +64,15 @@ import eu.kanade.presentation.manga.components.MangaChapterListItem
 import eu.kanade.presentation.manga.components.MangaInfoBox
 import eu.kanade.presentation.manga.components.MangaToolbar
 import eu.kanade.presentation.manga.components.MissingChapterCountListItem
+import eu.kanade.presentation.manga.components.SmartMangaInsights
 import eu.kanade.presentation.util.formatChapterNumber
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import eu.kanade.tachiyomi.ui.manga.ChapterList
+import eu.kanade.tachiyomi.ui.manga.ArcProcessor
+import eu.kanade.tachiyomi.ui.manga.ChapterAggregator
 import eu.kanade.tachiyomi.ui.manga.MangaViewModel
+import eu.kanade.tachiyomi.ui.manga.ReadingTimeEstimator
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.roundedfilled.PlayArrow
@@ -263,13 +276,9 @@ private fun MangaScreenSmallImpl(
 ) {
     val chapterListState = rememberLazyListState()
 
-    val (chapters, listItem, isAnySelected) = remember(state) {
-        Triple(
-            first = state.processedChapters,
-            second = state.chapterListItems,
-            third = state.isAnySelected,
-        )
-    }
+    val chapters = state.processedChapters
+    val isAnySelected = state.isAnySelected
+    var collapsedArcGroups by remember(state.manga.id) { mutableStateOf(emptySet<String>()) }
 
     BackHandler(enabled = isAnySelected) {
         onAllChapterSelected(false)
@@ -398,6 +407,15 @@ private fun MangaScreenSmallImpl(
                         )
                     }
 
+                    item {
+                        SmartMangaInsights(
+                            manga = state.manga,
+                            sourceName = state.source.name,
+                            sourceLanguage = state.source.lang,
+                            recommendations = state.recommendations,
+                        )
+                    }
+
                     item(
                         key = MangaScreenItem.DESCRIPTION_WITH_TAG,
                         contentType = MangaScreenItem.DESCRIPTION_WITH_TAG,
@@ -427,7 +445,15 @@ private fun MangaScreenSmallImpl(
 
                     sharedChapterItems(
                         manga = state.manga,
-                        chapters = listItem,
+                        groups = state.chapterDisplayGroups,
+                        collapsedGroups = collapsedArcGroups,
+                        onToggleGroup = { id ->
+                            collapsedArcGroups = if (id in collapsedArcGroups) {
+                                collapsedArcGroups - id
+                            } else {
+                                collapsedArcGroups + id
+                            }
+                        },
                         isAnyChapterSelected = state.selectedChapters.isNotEmpty(),
                         chapterSwipeStartAction = chapterSwipeStartAction,
                         chapterSwipeEndAction = chapterSwipeEndAction,
@@ -496,13 +522,9 @@ fun MangaScreenLargeImpl(
     val layoutDirection = LocalLayoutDirection.current
     val density = LocalDensity.current
 
-    val (chapters, listItem, isAnySelected) = remember(state) {
-        Triple(
-            first = state.processedChapters,
-            second = state.chapterListItems,
-            third = state.isAnySelected,
-        )
-    }
+    val chapters = state.processedChapters
+    val isAnySelected = state.isAnySelected
+    var collapsedArcGroups by remember(state.manga.id) { mutableStateOf(emptySet<String>()) }
 
     val insetPadding = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal).asPaddingValues()
     var topBarHeight by remember { mutableIntStateOf(0) }
@@ -614,6 +636,12 @@ fun MangaScreenLargeImpl(
                             onEditIntervalClicked = onEditIntervalClicked,
                             onEditCategory = onEditCategoryClicked,
                         )
+                        SmartMangaInsights(
+                            manga = state.manga,
+                            sourceName = state.source.name,
+                            sourceLanguage = state.source.lang,
+                            recommendations = state.recommendations,
+                        )
                         ExpandableMangaDescription(
                             defaultExpandState = true,
                             description = state.manga.description,
@@ -652,7 +680,15 @@ fun MangaScreenLargeImpl(
 
                             sharedChapterItems(
                                 manga = state.manga,
-                                chapters = listItem,
+                                groups = state.chapterDisplayGroups,
+                                collapsedGroups = collapsedArcGroups,
+                                onToggleGroup = { id ->
+                                    collapsedArcGroups = if (id in collapsedArcGroups) {
+                                        collapsedArcGroups - id
+                                    } else {
+                                        collapsedArcGroups + id
+                                    }
+                                },
                                 isAnyChapterSelected = state.selectedChapters.isNotEmpty(),
                                 chapterSwipeStartAction = chapterSwipeStartAction,
                                 chapterSwipeEndAction = chapterSwipeEndAction,
@@ -714,7 +750,9 @@ private fun SharedMangaBottomActionMenu(
 
 private fun LazyListScope.sharedChapterItems(
     manga: Manga,
-    chapters: List<ChapterList>,
+    groups: List<ArcProcessor.Group<ChapterAggregator.Row>>,
+    collapsedGroups: Set<String>,
+    onToggleGroup: (String) -> Unit,
     isAnyChapterSelected: Boolean,
     chapterSwipeStartAction: LibraryPreferences.ChapterSwipeAction,
     chapterSwipeEndAction: LibraryPreferences.ChapterSwipeAction,
@@ -724,72 +762,141 @@ private fun LazyListScope.sharedChapterItems(
     onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onChapterSwipe: (ChapterList.Item, LibraryPreferences.ChapterSwipeAction) -> Unit,
 ) {
-    items(
-        items = chapters,
-        key = { item ->
-            when (item) {
-                is ChapterList.MissingCount -> "missing-count-${item.id}"
-                is ChapterList.Item -> "chapter-${item.id}"
-            }
-        },
-        contentType = { MangaScreenItem.CHAPTER },
-    ) { item ->
-        val haptic = LocalHapticFeedback.current
+    groups.forEachIndexed { groupIndex, group ->
+        val groupId = "${group.id}:$groupIndex"
+        item(
+            key = "arc-group-${manga.id}-$groupId",
+            contentType = "arc_group",
+        ) {
+            ArcGroupHeader(
+                title = group.title,
+                count = group.chapters.sumOf {
+                    (it as? ChapterAggregator.Row.Chapters)?.items?.size ?: 0
+                },
+                expanded = groupId !in collapsedGroups,
+                onClick = { onToggleGroup(groupId) },
+            )
+        }
+        if (groupId in collapsedGroups) return@forEachIndexed
 
-        when (item) {
-            is ChapterList.MissingCount -> {
-                MissingChapterCountListItem(count = item.count)
-            }
-            is ChapterList.Item -> {
-                MangaChapterListItem(
-                    title = if (manga.displayMode == Manga.CHAPTER_DISPLAY_NUMBER) {
-                        stringResource(
-                            MR.strings.display_mode_chapter,
-                            formatChapterNumber(item.chapter.chapterNumber),
-                        )
-                    } else {
-                        item.chapter.name
-                    },
-                    date = relativeDateText(item.chapter.dateUpload),
-                    readProgress = item.chapter.lastPageRead
-                        .takeIf { !item.chapter.read && it > 0L }
-                        ?.let {
+        items(
+            items = group.chapters,
+            key = { row ->
+                when (row) {
+                    is ChapterAggregator.Row.MissingCount -> "missing-count-${row.item.id}"
+                    is ChapterAggregator.Row.Chapters ->
+                        "chapter-group-${row.items.first().id}-${row.items.size}"
+                }
+            },
+            contentType = { MangaScreenItem.CHAPTER },
+        ) { row ->
+            val haptic = LocalHapticFeedback.current
+
+            when (row) {
+                is ChapterAggregator.Row.MissingCount -> {
+                    MissingChapterCountListItem(count = row.item.count)
+                }
+                is ChapterAggregator.Row.Chapters -> {
+                    val chapterItems = row.items
+                    val item = chapterItems.first()
+                    val selected = chapterItems.all { it.selected }
+                    val scanlators = chapterItems
+                        .mapNotNull { it.chapter.scanlator?.takeIf(String::isNotBlank) }
+                        .distinct()
+                        .joinToString()
+                        .takeIf(String::isNotBlank)
+                    MangaChapterListItem(
+                        title = if (manga.displayMode == Manga.CHAPTER_DISPLAY_NUMBER) {
                             stringResource(
-                                MR.strings.chapter_progress,
-                                it + 1,
+                                MR.strings.display_mode_chapter,
+                                formatChapterNumber(item.chapter.chapterNumber),
                             )
+                        } else {
+                            item.chapter.name
                         },
-                    scanlator = item.chapter.scanlator.takeIf { !it.isNullOrBlank() },
-                    read = item.chapter.read,
-                    bookmark = item.chapter.bookmark,
-                    selected = item.selected,
-                    downloadIndicatorEnabled = !isAnyChapterSelected && !manga.isLocal(),
-                    downloadStateProvider = { item.downloadState },
-                    downloadProgressProvider = { downloadProgressProvider(item.id) },
-                    chapterSwipeStartAction = chapterSwipeStartAction,
-                    chapterSwipeEndAction = chapterSwipeEndAction,
-                    onLongClick = {
-                        onChapterSelected(item, !item.selected, true)
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    },
-                    onClick = {
-                        onChapterItemClick(
-                            chapterItem = item,
-                            isAnyChapterSelected = isAnyChapterSelected,
-                            onToggleSelection = { onChapterSelected(item, !item.selected, false) },
-                            onChapterClicked = onChapterClicked,
-                        )
-                    },
-                    onDownloadClick = if (onDownloadChapter != null) {
-                        { onDownloadChapter(listOf(item), it) }
-                    } else {
-                        null
-                    },
-                    onChapterSwipe = {
-                        onChapterSwipe(item, it)
-                    },
-                )
+                        date = relativeDateText(item.chapter.dateUpload),
+                        readProgress = item.chapter.lastPageRead
+                            .takeIf { !item.chapter.read && it > 0L }
+                            ?.let {
+                                stringResource(
+                                    MR.strings.chapter_progress,
+                                    it + 1,
+                                )
+                            },
+                        scanlator = buildString {
+                            if (scanlators != null) append(scanlators)
+                            if (chapterItems.size > 1) {
+                                if (isNotEmpty()) append(" · ")
+                                append("+")
+                                append(chapterItems.size - 1)
+                            }
+                        }.takeIf(String::isNotBlank),
+                        read = chapterItems.all { it.chapter.read },
+                        bookmark = chapterItems.any { it.chapter.bookmark },
+                        selected = selected,
+                        downloadIndicatorEnabled = !isAnyChapterSelected && !manga.isLocal(),
+                        downloadStateProvider = { item.downloadState },
+                        downloadProgressProvider = { downloadProgressProvider(item.id) },
+                        chapterSwipeStartAction = chapterSwipeStartAction,
+                        chapterSwipeEndAction = chapterSwipeEndAction,
+                        readingTime = stringResource(
+                            MR.strings.chapter_reading_time,
+                            ReadingTimeEstimator.estimateMinutes(),
+                        ),
+                        onLongClick = {
+                            chapterItems.forEach { onChapterSelected(it, !selected, true) }
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
+                        onClick = {
+                            if (selected || isAnyChapterSelected) {
+                                chapterItems.forEach { onChapterSelected(it, !selected, false) }
+                            } else {
+                                onChapterClicked(item.chapter)
+                            }
+                        },
+                        onDownloadClick = if (onDownloadChapter != null) {
+                            { onDownloadChapter(chapterItems, it) }
+                        } else {
+                            null
+                        },
+                        onChapterSwipe = { action ->
+                            chapterItems.forEach { onChapterSwipe(it, action) }
+                        },
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun ArcGroupHeader(
+    title: String,
+    count: Int,
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .animateContentSize(),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.82f),
+        shape = RoundedCornerShape(12.dp),
+        tonalElevation = 1.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(if (expanded) "-" else "+", modifier = Modifier.padding(end = 12.dp))
+            Text(
+                text = "$title ($count)",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }

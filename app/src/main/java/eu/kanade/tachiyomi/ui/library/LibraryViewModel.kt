@@ -47,6 +47,7 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
 import mihon.core.common.utils.mutate
 import mihon.core.metro.AppCoroutineScope
+import mihon.app.SmartCategorizer
 import mihon.domain.library.model.search.QueryNode
 import mihon.feature.library.matches
 import tachiyomi.core.common.preference.CheckboxState
@@ -396,6 +397,7 @@ class LibraryViewModel(
             libraryPreferences.filterBookmarked.changes(),
             libraryPreferences.filterCompleted.changes(),
             libraryPreferences.filterIntervalCustom.changes(),
+            preferences.adultContentMode.changes(),
         ) {
             ItemPreferences(
                 downloadBadge = it[0] as Boolean,
@@ -410,6 +412,7 @@ class LibraryViewModel(
                 filterBookmarked = it[9] as TriState,
                 filterCompleted = it[10] as TriState,
                 filterIntervalCustom = it[11] as TriState,
+                adultContentMode = it[12] as Int,
             )
         }
     }
@@ -434,6 +437,8 @@ class LibraryViewModel(
                     isLocal = manga.manga.isLocal(),
                     sourceName = source.name.lowercase(),
                     sourceLanguage = source.lang,
+                    isAdult = SmartCategorizer.classify(manga.manga, source.name, source.lang).isAdult,
+                    adultContentMode = preferences.adultContentMode,
                     badges = LibraryItem.Badges(
                         downloadCount = if (preferences.downloadBadge) {
                             downloadCount
@@ -773,6 +778,7 @@ class LibraryViewModel(
         val filterBookmarked: TriState,
         val filterCompleted: TriState,
         val filterIntervalCustom: TriState,
+        val adultContentMode: Int,
     )
 
     @Immutable

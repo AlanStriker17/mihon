@@ -25,18 +25,30 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
 import androidx.core.graphics.Insets
+import androidx.core.graphics.drawable.toBitmap
 import androidx.core.net.toUri
 import androidx.core.transition.doOnEnd
 import androidx.core.view.ViewCompat
@@ -44,6 +56,11 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.transition.platform.MaterialContainerTransform
+import androidx.palette.graphics.Palette
+import coil3.asDrawable
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
 import dev.zacsweers.metro.Inject
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.reader.DisplayRefreshHost
@@ -78,6 +95,8 @@ import eu.kanade.tachiyomi.ui.reader.viewer.webgpu.WebGpuViewer
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.readerBackgroundColor
+import eu.kanade.tachiyomi.util.system.AdultContentVault
+import eu.kanade.tachiyomi.util.view.setSecureScreen
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.setComposeContent
@@ -91,8 +110,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.app.di.AppGraph
+import mihon.app.SmartCategorizer
 import mihon.core.metro.metroGraph
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.i18n.stringResource
@@ -248,6 +269,25 @@ class ReaderActivity : BaseActivity() {
     private fun ReaderActivityBinding.setComposeOverlay(): Unit = composeOverlay.setComposeContent {
         val state by viewModel.state.collectAsState()
         val showPageNumber by readerPreferences.showPageNumber.collectAsState()
+        val isSensitive = remember(state.manga, state.source) {
+            val manga = state.manga
+            manga != null && SmartCategorizer.classify(
+                manga,
+                state.source?.name.orEmpty(),
+                state.source?.lang.orEmpty(),
+            ).isAdult
+        }
+        val adultUnlocked by AdultContentVault.unlocked.collectAsState()
+        val unlockScope = rememberCoroutineScope()
+        var attemptedUnlockFor by remember { mutableStateOf<Long?>(null) }
+        LaunchedEffect(state.manga?.id, isSensitive, adultUnlocked) {
+            val mangaId = state.manga?.id ?: return@LaunchedEffect
+            if (isSensitive && !adultUnlocked && attemptedUnlockFor != mangaId) {
+                attemptedUnlockFor = mangaId
+                window.setSecureScreen(true)
+                AdultContentVault.unlock(this@ReaderActivity)
+            }
+        }
         val settingsviewModel = remember {
             ReaderSettingsViewModel(
                 readerState = viewModel.state,
@@ -271,6 +311,33 @@ class ReaderActivity : BaseActivity() {
             ContentOverlay(state = state)
 
             AppBars(state = state)
+
+            if (isSensitive && !adultUnlocked) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                        .clickable(onClick = {}),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = stringResource(MR.strings.adult_content_hidden_title),
+                            color = Color.White,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                unlockScope.launch {
+                                    AdultContentVault.unlock(this@ReaderActivity)
+                                }
+                            },
+                        ) {
+                            Text(stringResource(MR.strings.adult_content_unlock_title))
+                        }
+                    }
+                }
+            }
         }
 
         val onDismissRequest = viewModel::closeDialog
@@ -423,6 +490,25 @@ class ReaderActivity : BaseActivity() {
 
     @Composable
     private fun ContentOverlay(state: ReaderViewModel.State) {
+        var ambientColor by remember(state.manga?.thumbnailUrl) { mutableStateOf<Int?>(null) }
+        LaunchedEffect(state.manga?.thumbnailUrl) {
+            val coverUrl = state.manga?.thumbnailUrl ?: return@LaunchedEffect
+            val request = ImageRequest.Builder(this@ReaderActivity)
+                .data(coverUrl)
+                .size(64, 64)
+                .allowHardware(false)
+                .build()
+            val drawable = withContext(Dispatchers.IO) {
+                imageLoader.execute(request).image?.asDrawable(resources)
+            } ?: return@LaunchedEffect
+            ambientColor = withContext(Dispatchers.Default) {
+                val bitmap = drawable.toBitmap(64, 64)
+                val palette = Palette.from(bitmap).generate()
+                palette.vibrantSwatch?.rgb
+                    ?: palette.mutedSwatch?.rgb
+                    ?: palette.dominantSwatch?.rgb
+            }
+        }
         val flashOnPageChange by readerPreferences.flashOnPageChange.collectAsState()
 
         val colorOverlayEnabled by readerPreferences.colorFilter.collectAsState()
@@ -436,6 +522,7 @@ class ReaderActivity : BaseActivity() {
             brightness = state.brightnessOverlayValue,
             color = colorOverlay.takeIf { colorOverlayEnabled },
             colorBlendMode = colorOverlayBlendMode,
+            ambientColor = ambientColor.takeIf { !ReadingMode.isPagerType(viewModel.getMangaReadingMode()) },
         )
 
         if (flashOnPageChange) {
