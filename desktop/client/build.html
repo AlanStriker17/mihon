@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Build Mihon Desktop for Windows</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #101319;
+      color: #f1f3f8;
+    }
+    body { margin: 0; padding: 3rem 1.25rem; }
+    main { max-width: 760px; margin: auto; }
+    h1 { font-size: clamp(2rem, 6vw, 3rem); margin-bottom: .5rem; }
+    p, li { color: #c5cad5; line-height: 1.6; }
+    .card { background: #1a202a; border: 1px solid #303948; border-radius: 16px; padding: 1.5rem; margin: 1.25rem 0; }
+    .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.25rem; }
+    a.button { display: inline-block; border-radius: 9px; padding: .8rem 1rem; background: #a8c7fa; color: #111820; text-decoration: none; font-weight: 700; }
+    a.secondary { background: #303948; color: #f1f3f8; }
+    code { color: #d0bcff; overflow-wrap: anywhere; }
+    .notice { border-left: 4px solid #f2c66d; padding-left: 1rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Build Mihon Desktop for Windows</h1>
+    <p>Get a Windows installer for the Mihon desktop client. The installer must be built on Windows; a browser or Linux machine cannot compile a Windows <code>.exe</code> by itself.</p>
+
+    <section class="card">
+      <h2>Build it in GitHub Actions</h2>
+      <ol>
+        <li>Open the Windows build workflow and select <strong>Run workflow</strong>.</li>
+        <li>Wait for the run to finish successfully.</li>
+        <li>Open the run and download the <strong>mihon-desktop-windows</strong> artifact. It contains the installer.</li>
+      </ol>
+      <p>You need access to the repository and must be signed in to GitHub to start the workflow and download its artifact.</p>
+      <div class="actions">
+        <a class="button" href="https://github.com/AlanStriker17/mihon/actions/workflows/build-desktop-windows.yml">Build and download via GitHub</a>
+        <a class="button secondary" href="https://github.com/AlanStriker17/mihon">Open repository</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Build on your Windows PC</h2>
+      <p>Download the repository, install JDK 21, then run <code>Build-Mihon.ps1</code> from the checkout. The script builds the installer and opens its output folder.</p>
+      <p>Or run this in PowerShell from the repository root:</p>
+      <p><code>.\gradlew.bat :desktop:client:packageWindowsExe --no-daemon</code></p>
+      <div class="actions">
+        <a class="button secondary" href="https://github.com/AlanStriker17/mihon/blob/main/desktop/client/Build-Mihon.ps1">View the Windows build script</a>
+      </div>
+    </section>
+
+    <p class="notice">This creates the current incremental desktop client, not a feature-complete Windows port. Existing Android extension APKs are not compatible with the desktop client.</p>
+  </main>
+</body>
+</html>
